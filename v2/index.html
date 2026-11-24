@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Try on · TCM Cordovan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:#000;color:#fff;font:16px/1.5 Jost,"Helvetica Neue",Arial,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent}
+.stage{position:fixed;inset:0}
+.stage.flip{transform:scaleX(-1)}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%}
+.top{position:fixed;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 14px) 18px 14px;text-align:center;font:700 22px "Times New Roman",Georgia,serif;letter-spacing:.02em;background:linear-gradient(#0008,#0000);pointer-events:none}
+.status{position:fixed;top:calc(env(safe-area-inset-top) + 64px);left:50%;transform:translateX(-50%);background:#000a;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:8px 16px;border-radius:999px;font-size:14px;white-space:nowrap;transition:opacity .3s}
+.status[hidden]{display:block;opacity:0;pointer-events:none}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:16px 20px calc(env(safe-area-inset-bottom) + 18px);background:linear-gradient(#0000,#000c 45%);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
+.name{font-size:14px;text-transform:uppercase;letter-spacing:.02em;line-height:1.3}.name span{display:block;opacity:.75;text-transform:none}
+.shutter{width:72px;height:72px;border-radius:50%;border:4px solid #fff;background:#fff3;cursor:pointer;padding:0}
+.shutter:active{background:#fff8}
+.ghost{justify-self:end;font:inherit;font-size:14px;color:#fff;background:#0006;border:1px solid #fff5;border-radius:999px;min-height:44px;padding:0 16px;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.panel{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 116px);max-width:420px;margin:0 auto;background:#111e;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:16px;padding:16px 18px;display:grid;gap:10px}
+.panel[hidden]{display:none}
+.panel label{display:grid;grid-template-columns:72px 1fr;align-items:center;font-size:14px;gap:12px}
+.panel input{width:100%;accent-color:#fff;height:32px}
+.panel .reset{justify-self:start;font:inherit;font-size:14px;color:#fff;background:none;border:0;text-decoration:underline;min-height:40px;cursor:pointer}
+.intro{position:fixed;inset:0;background:#fff;color:#111;display:grid;place-items:center;padding:calc(env(safe-area-inset-top) + 24px) 28px calc(env(safe-area-inset-bottom) + 24px);text-align:center}
+.intro[hidden]{display:none}
+.intro .mark{font:700 26px "Times New Roman",Georgia,serif;margin-bottom:28px}
+.intro h1{font-weight:500;font-size:clamp(28px,7vw,44px);line-height:1.05;text-transform:uppercase;text-wrap:balance;margin-bottom:14px}
+.intro p{color:#555;max-width:34ch;margin:0 auto 26px}
+.intro .go{font:inherit;font-size:16px;color:#fff;background:#111;border:0;min-height:54px;padding:0 34px;cursor:pointer;width:min(320px,100%)}
+.intro .go:disabled{opacity:.5}
+.intro small{display:block;color:#777;font-size:13px;margin-top:16px;max-width:36ch;margin-inline:auto}
+.intro .err{color:#a11;margin-top:16px;font-size:14px;max-width:36ch;margin-inline:auto}
+.shot{position:fixed;inset:0;background:#000;display:grid;grid-template-rows:1fr auto;padding:calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px);gap:14px}
+.shot[hidden]{display:none}
+.shot img{width:100%;height:100%;object-fit:contain;min-height:0}
+.shot .acts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.shot .acts button,.shot .acts a{font:inherit;font-size:15px;color:#111;background:#fff;border:0;min-height:48px;padding:0 24px;display:inline-flex;align-items:center;text-decoration:none;cursor:pointer}
+.shot .acts .sec{background:transparent;color:#fff;border:1px solid #fff6}
+@media(prefers-reduced-motion:reduce){.status{transition:none}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<!-- Jeeliz FaceFilter (Apache-2.0, github.com/jeeliz/jeelizFaceFilter): face tracking + built-in stabilisation -->
+<script src="./jeeliz/JeelizResizer.js"></script>
+</head>
+<body>
+<div class="stage" id="stage"><canvas id="ff"></canvas><canvas id="gl"></canvas></div>
+<div class="top">TCM</div>
+<div class="status" id="status" hidden></div>
+<div class="bar">
+  <div class="name">TCM Cordovan<span>189.00 SR</span></div>
+  <button class="shutter" id="snap" aria-label="Take a photo"></button>
+  <button class="ghost" id="fitBtn" aria-expanded="false">Adjust fit</button>
+</div>
+<div class="panel" id="panel" hidden>
+  <label>Size<input id="f-size" type="range" min="0.85" max="1.15" step="0.01" value="1"></label>
+  <label>Height<input id="f-height" type="range" min="-10" max="10" step="0.5" value="0"></label>
+  <label>Depth<input id="f-depth" type="range" min="-15" max="15" step="0.5" value="0"></label>
+  <button class="reset" id="f-reset">Reset fit</button>
+</div>
+<div class="intro" id="intro">
+  <div>
+    <div class="mark">TCM</div>
+    <h1>Try on the Cordovan</h1>
+    <p>See the frame on your face, live. Turn your head to check the side profile.</p>
+    <button class="go" id="start">Start camera</button>
+    <small>Runs entirely on your phone. Your camera feed is never uploaded or recorded.</small>
+    <div class="err" id="err" role="alert"></div>
+  </div>
+</div>
+<div class="shot" id="shot" hidden>
+  <img id="shotImg" alt="Your try-on photo">
+  <div class="acts"><button id="share">Share</button><a id="save" download="tcm-cordovan-tryon.jpg">Save</a><button class="sec" id="close">Back to camera</button></div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import JEELIZFACEFILTER from './jeeliz/jeelizFaceFilter.moduleES6.js';
+import { loadGlasses, makeEnvironment } from '../glasses.js';
+{
+  // Jeeliz "face units": 1 unit ≈ 97 mm (derived from the Jeeliz glasses demo: 240-unit frame × 0.006 ≈ 1.44 u ≈ 140 mm).
+  const UNIT_MM = 97;
+  const LENS_Y = 0.27, FRONT_Z = 0.53;   // where our lens centre / frame front sit in the face object (from the Jeeliz demo)
+  const PIVOT = [0.2, 0.6];              // Jeeliz helper default (head rotation pivot)
+  const MIN_DIM_FOV = 35;                // Jeeliz helper default vertical FoV for the video's smaller dimension
+  const DETECT_ON = 0.82, DETECT_OFF = 0.78;
+  // Stabilisation: still head -> heavy averaging (alpha 0.03); moving -> follows immediately.
+  const STABILISATION = { translationFactorRange: [0.0025, 0.012], rotationFactorRange: [0.02, 0.12], qualityFactorRange: [0.85, 0.98], alphaRange: [0.03, 1] };
+
+  const $ = id => document.getElementById(id);
+  const ffCanvas = $('ff'), glCanvas = $('gl'), stage = $('stage'), statusEl = $('status');
+  const say = t => { statusEl.textContent = t || ''; statusEl.hidden = !t; };
+
+  // ---------- fit settings (remembered on this device) ----------
+  const fit = { size: 1, height: 0, depth: 0 };
+  try { Object.assign(fit, JSON.parse(localStorage.getItem('tcm-fit-v2') || '{}')); } catch {}
+  ['size', 'height', 'depth'].forEach(k => {
+    const el = $('f-' + k); el.value = fit[k];
+    el.addEventListener('input', () => { fit[k] = +el.value; applyFit(); try { localStorage.setItem('tcm-fit-v2', JSON.stringify(fit)); } catch {} });
+  });
+  $('f-reset').addEventListener('click', () => {
+    Object.assign(fit, { size: 1, height: 0, depth: 0 });
+    ['size', 'height', 'depth'].forEach(k => $('f-' + k).value = fit[k]);
+    applyFit(); try { localStorage.removeItem('tcm-fit-v2'); } catch {}
+  });
+  $('fitBtn').addEventListener('click', e => {
+    const open = $('panel').hidden; $('panel').hidden = !open; e.currentTarget.setAttribute('aria-expanded', open);
+  });
+
+  // ---------- 3D scene (our own three.js r170 renderer on a canvas over the Jeeliz video canvas) ----------
+  const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(1);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  const scene = new THREE.Scene();
+  scene.environment = makeEnvironment(renderer);
+  const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(0.3, 1, 1); scene.add(sun);
+  const camera = new THREE.PerspectiveCamera(MIN_DIM_FOV, 1, 0.1, 100);
+  const face = new THREE.Object3D(); face.visible = false; scene.add(face);
+  const holder = new THREE.Group(); face.add(holder);
+  let mirrored = false;
+  function applyFit() {
+    const s = fit.size / UNIT_MM;
+    holder.scale.set(mirrored ? -s : s, s, s);  // un-mirror the model when the whole stage is CSS-mirrored, so the logo reads correctly
+    holder.position.set(0, LENS_Y + fit.height / UNIT_MM, FRONT_Z + fit.depth / UNIT_MM);
+  }
+  applyFit();
+  const glassesReady = loadGlasses('../cordovan.glb').then(g => { holder.add(g); });
+  // head occluder from the Jeeliz demo (invisible, depth only): hides temples behind the head
+  const occluderReady = fetch('./jeeliz/face.json').then(r => r.json()).then(j => {
+    const occ = new THREE.Mesh(new THREE.BufferGeometryLoader().parse(j), new THREE.MeshBasicMaterial({ colorWrite: false }));
+    occ.rotation.set(0.3, 0, 0); occ.position.set(0, 0.10, -0.04); occ.scale.setScalar(0.0084);
+    occ.renderOrder = -1; face.add(occ);
+  }).catch(() => {});
+
+  // ---------- camera / pose (ported from JeelizThreeHelper.update_camera / update_poses) ----------
+  let spec = null, scaleW = 1, aspect = 1;
+  function updateCamera() {
+    const cvw = ffCanvas.width, cvh = ffCanvas.height;
+    glCanvas.width = cvw; glCanvas.height = cvh;
+    aspect = cvw / cvh;
+    const vw = spec.videoElement.videoWidth, vh = spec.videoElement.videoHeight, var_ = vw / vh;
+    const fov = MIN_DIM_FOV * ((vh > vw) ? (1 / var_) : 1);
+    const scale = (aspect > var_) ? cvw / vw : cvh / vh;
+    const cvws = vw * scale, cvhs = vh * scale;
+    scaleW = cvw / cvws;
+    camera.aspect = aspect; camera.fov = fov;
+    camera.setViewOffset(cvws, cvhs, (cvws - cvw) / 2, (cvhs - cvh) / 2, cvw, cvh);
+    camera.updateProjectionMatrix();
+    renderer.setSize(cvw, cvh, false);
+  }
+  const tr = new THREE.Vector3();
+  function updatePose(ds) {
+    const halfTanFOVX = Math.tan(camera.aspect * camera.fov * Math.PI / 360);
+    const cz = Math.cos(ds.rz), sz = Math.sin(ds.rz);
+    const W = ds.s * scaleW;
+    const D = 1 / (2 * W * halfTanFOVX) + 0.5;
+    const x = ds.x * scaleW * D * halfTanFOVX, y = ds.y * scaleW * D * halfTanFOVX / aspect, z = -D;
+    face.position.set(-sz * PIVOT[0], -cz * PIVOT[0], -PIVOT[1]);
+    face.rotation.set(ds.rx, ds.ry, ds.rz, 'ZYX');
+    face.position.applyEuler(face.rotation);
+    face.position.add(tr.set(x, y + PIVOT[0], z + PIVOT[1]));
+  }
+
+  // ---------- video drawing on the Jeeliz canvas (ported from JeelizThreeHelper 2-canvas mode) ----------
+  let gl = null, copyProg = null, copyMat = null;
+  function makeCopyProgram() {
+    gl = spec.GL;
+    const sh = (src, type) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    copyProg = gl.createProgram();
+    gl.attachShader(copyProg, sh('attribute vec2 position;uniform mat2 videoTransformMat2;varying vec2 vUV;void main(void){gl_Position=vec4(position,0.,1.);vUV=0.5+videoTransformMat2*position;}', gl.VERTEX_SHADER));
+    gl.attachShader(copyProg, sh('precision lowp float;uniform sampler2D samplerVideo;varying vec2 vUV;void main(void){gl_FragColor=texture2D(samplerVideo,vUV);}', gl.FRAGMENT_SHADER));
+    gl.linkProgram(copyProg);
+    copyMat = gl.getUniformLocation(copyProg, 'videoTransformMat2');
+  }
+  function drawVideo() {
+    gl.viewport(0, 0, ffCanvas.width, ffCanvas.height);
+    gl.useProgram(copyProg);
+    gl.uniformMatrix2fv(copyMat, false, spec.videoTransformMat2);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, spec.videoTexture);
+    gl.drawElements(gl.TRIANGLES, 3, gl.UNSIGNED_SHORT, 0);
+  }
+
+  // ---------- tracking loop (called by Jeeliz every frame) ----------
+  let wantShot = false;
+  function track(ds) {
+    if (!spec) return;
+    if (face.visible && ds.detected < DETECT_OFF) { face.visible = false; say('Look at the camera'); }
+    else if (!face.visible && ds.detected > DETECT_ON) { face.visible = true; say(''); }
+    if (face.visible) updatePose(ds);
+    drawVideo();
+    renderer.render(scene, camera);
+    if (wantShot) { wantShot = false; capture(); }
+  }
+
+  // ---------- start ----------
+  const ERRORS = {
+    WEBCAM_UNAVAILABLE: 'Camera access was blocked or no camera was found. Allow the camera for this site, then try again.',
+    GL_INCOMPATIBLE: 'This browser cannot run the try-on (WebGL unavailable). Try Safari or Chrome.',
+  };
+  const fail = code => {
+    $('start').disabled = false; $('intro').hidden = false;
+    $('err').textContent = ERRORS[code] || 'The camera could not start here. If you opened this from Instagram, use “Open in browser” and try again.';
+  };
+  $('start').addEventListener('click', () => {
+    $('err').textContent = ''; $('start').disabled = true; $('start').textContent = 'Starting…';
+    window.JeelizResizer.size_canvas({
+      canvasId: 'ff', isFullScreen: true, overSamplingFactor: Math.min(2, window.devicePixelRatio || 1),
+      onResize: () => { if (spec) { JEELIZFACEFILTER.resize(); updateCamera(); } },
+      callback: (isError, bestVideoSettings) => {
+        JEELIZFACEFILTER.init({
+          canvasId: 'ff', NNCPath: './jeeliz/NN_DEFAULT.json', maxFacesDetected: 1, followZRot: true,
+          videoSettings: bestVideoSettings, stabilizationSettings: STABILISATION,
+          callbackReady: async (err, s) => {
+            if (err) { $('start').textContent = 'Start camera'; fail(err); return; }
+            await Promise.all([glassesReady, occluderReady]);
+            spec = s; makeCopyProgram(); updateCamera();
+            // Jeeliz shows the raw (un-mirrored) camera by default; mirror the whole stage for a selfie view.
+            mirrored = spec.videoTransformMat2[0] > 0;
+            stage.classList.toggle('flip', mirrored); applyFit();
+            $('intro').hidden = true; say('Look at the camera');
+          },
+          callbackTrack: track,
+        });
+      },
+    });
+  });
+
+  // ---------- photo (captured inside the render callback so the WebGL canvas still holds the frame) ----------
+  let shotURL = null, shotBlob = null;
+  $('snap').addEventListener('click', () => { if (spec) wantShot = true; });
+  function capture() {
+    const w = ffCanvas.width, h = ffCanvas.height;
+    const out = document.createElement('canvas'); out.width = w; out.height = h;
+    const g = out.getContext('2d');
+    g.save(); if (mirrored) { g.translate(w, 0); g.scale(-1, 1); }
+    g.drawImage(ffCanvas, 0, 0); g.drawImage(glCanvas, 0, 0); g.restore();
+    g.font = `700 ${Math.round(h * 0.035)}px "Times New Roman", Georgia, serif`; g.fillStyle = '#fff'; g.textAlign = 'right';
+    g.fillText('TCM', w - h * 0.03, h - h * 0.03);
+    out.toBlob(bl => {
+      shotBlob = bl; if (shotURL) URL.revokeObjectURL(shotURL);
+      shotURL = URL.createObjectURL(bl); $('shotImg').src = shotURL; $('save').href = shotURL; $('shot').hidden = false;
+    }, 'image/jpeg', 0.92);
+  }
+  $('close').addEventListener('click', () => { $('shot').hidden = true; });
+  $('share').addEventListener('click', async () => {
+    const file = shotBlob && new File([shotBlob], 'tcm-cordovan-tryon.jpg', { type: 'image/jpeg' });
+    try {
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: 'TCM Cordovan' });
+      else $('save').click();
+    } catch {}
+  });
+}
+</script>
+</body>
+</html>
