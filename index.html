@@ -133,22 +133,41 @@ import { loadGlasses, buildOccluder, makeEnvironment } from './glasses.js';
     }
     reset() { this.x = null; this.dx = 0; }
   }
-  const fp = [new OneEuro(), new OneEuro(), new OneEuro()], fs = new OneEuro(1.0, 0.004);
+  // position: steady at rest (1 Hz), opens up quickly when the head moves (beta is per px/s)
+  const fp = [new OneEuro(1.0, 0.02), new OneEuro(1.0, 0.02), new OneEuro(1.0, 0.02)];
+  const fs = new OneEuro(0.4, 0.8);  // size barely changes; keep it very calm
   const qS = new THREE.Quaternion(); let haveQ = false;
 
-  // ---------- pose from landmarks ----------
+  // ---------- pose ----------
   const P = (L, i, out) => out.set((1 - L[i].x) * W, -L[i].y * H, -L[i].z * W);
   const a = new THREE.Vector3(), b = new THREE.Vector3(), t = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
   const xA = new THREE.Vector3(), yA = new THREE.Vector3(), zA = new THREE.Vector3(), off = new THREE.Vector3();
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion();
-  function place(L, dt) {
-    P(L, 33, a); P(L, 263, b); P(L, 10, t); P(L, 152, c); P(L, 6, n);
-    xA.subVectors(a, b); const eye = xA.length(); xA.normalize();
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), mirror = new THREE.Matrix4().makeScale(-1, 1, 1);
+  const tmpP = new THREE.Vector3(), tmpS = new THREE.Vector3();
+  // Head rotation. Preferred: MediaPipe's facial transformation matrix (rigid fit over all 468
+  // points, unaffected by talking/jaw). It lives in un-mirrored camera space, so mirror it: S·M·S.
+  // Fallback: basis from 4 landmarks (noisier: chin moves with the mouth).
+  function headRotation(res, L, out) {
+    const fm = res.facialTransformationMatrixes && res.facialTransformationMatrixes[0];
+    if (fm && fm.data && fm.data.length === 16) {
+      m.fromArray(fm.data).premultiply(mirror).multiply(mirror).decompose(tmpP, out, tmpS);
+      return;
+    }
+    P(L, 10, t); P(L, 152, c);
     yA.subVectors(t, c); yA.addScaledVector(xA, -yA.dot(xA)).normalize();
     zA.crossVectors(xA, yA);
-    q.setFromRotationMatrix(m.makeBasis(xA, yA, zA));
+    out.setFromRotationMatrix(m.makeBasis(xA, yA, zA));
+  }
+  function place(res, L, dt) {
+    P(L, 33, a); P(L, 263, b); P(L, 6, n);
+    xA.subVectors(a, b); const eye = xA.length(); xA.normalize();
+    headRotation(res, L, q);
     if (!haveQ) { qS.copy(q); haveQ = true; }
-    else { const ang = qS.angleTo(q); qS.slerp(q, Math.min(1, 0.3 + ang * 3)); }
+    else {
+      // One-Euro-style slerp: tiny jitter is heavily damped, real turns follow quickly
+      const speed = qS.angleTo(q) / dt, r = 2 * Math.PI * (1.2 + 2.0 * speed) * dt;
+      qS.slerp(q, r / (r + 1));
+    }
     const s = fs.f(eye / EYE_MM * fit.size, dt);
     off.set(0, ANCHOR.y + fit.height, ANCHOR.z - fit.depth).applyQuaternion(qS).multiplyScalar(s);
     rig.position.set(fp[0].f(n.x, dt), fp[1].f(n.y, dt), fp[2].f(n.z, dt)).sub(off);
@@ -160,7 +179,7 @@ import { loadGlasses, buildOccluder, makeEnvironment } from './glasses.js';
   let landmarker = null;
   async function loadTracker() {
     const files = await FilesetResolver.forVisionTasks(WASM);
-    const opts = d => ({ baseOptions: { modelAssetPath: MODEL, delegate: d }, runningMode: 'VIDEO', numFaces: 1 });
+    const opts = d => ({ baseOptions: { modelAssetPath: MODEL, delegate: d }, runningMode: 'VIDEO', numFaces: 1, outputFacialTransformationMatrixes: true });
     try { return await FaceLandmarker.createFromOptions(files, opts('GPU')); }
     catch { return await FaceLandmarker.createFromOptions(files, opts('CPU')); }
   }
@@ -174,7 +193,7 @@ import { loadGlasses, buildOccluder, makeEnvironment } from './glasses.js';
       const dt = Math.max(1 / 120, (now - lastT) / 1000); lastT = now;
       const res = landmarker.detectForVideo(video, now);
       const L = res.faceLandmarks && res.faceLandmarks[0];
-      if (L) { place(L, dt); rig.visible = true; lostAt = 0; say(''); }
+      if (L) { place(res, L, dt); rig.visible = true; lostAt = 0; say(''); }
       else {
         if (!lostAt) lostAt = now;
         if (now - lostAt > 250) { rig.visible = false; haveQ = false; fp.forEach(f => f.reset()); fs.reset(); say('Look at the camera'); }
